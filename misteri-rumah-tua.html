@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Misteri Rumah Tua 3D</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{overflow:hidden;background:#000;color:white;font-family:Arial,sans-serif;touch-action:none}
+#game{position:fixed;inset:0}
+#hud{position:absolute;top:14px;left:14px;z-index:3;font-size:13px;line-height:1.9;text-shadow:2px 2px 5px black}
+#message{position:absolute;top:43%;width:100%;text-align:center;font-size:19px;font-weight:bold;color:#eee;text-shadow:2px 2px 8px black;z-index:3;pointer-events:none}
+#controls{position:absolute;bottom:22px;left:0;width:100%;padding:0 18px;display:flex;justify-content:space-between;align-items:end;z-index:4}
+.pad{display:grid;grid-template-columns:repeat(3,53px);grid-template-rows:repeat(2,53px);gap:5px}
+button{color:white;background:rgba(65,65,65,.7);border:1px solid #aaa;border-radius:12px;font-size:21px;touch-action:none}
+button:active{background:#963030}
+#up{grid-column:2}#left{grid-column:1}#down{grid-column:2}#right{grid-column:3}
+#actions{display:flex;flex-direction:column;gap:8px}
+#actions button{width:65px;height:48px;font-size:13px}
+#startScreen,#endScreen{position:absolute;inset:0;z-index:10;background:rgba(0,0,0,.96);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:18px;padding:25px}
+h1{color:#b51e1e;font-size:30px;text-shadow:0 0 15px #700}
+p{color:#ccc;line-height:1.6;max-width:400px}
+.mainButton{background:#8e1717;padding:15px 28px;font-size:16px}
+.hidden{display:none!important}
+#soundBtn{position:absolute;top:14px;right:14px;z-index:5;padding:9px 12px;font-size:12px}
+#flashEffect{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:6}
+#lookInfo{position:absolute;bottom:150px;right:20px;font-size:10px;color:#bbb;text-shadow:1px 1px 4px black;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="hud"><b>MISTERI RUMAH TUA</b><br>🔑 <span id="keyStatus">Kunci: Belum ditemukan</span><br>👻 <span id="ghostStatus">Jangan lengah...</span><br>🔦 Senter aktif</div>
+<button id="soundBtn">🔊 SUARA ON</button>
+<div id="message">Temukan kunci untuk keluar!</div>
+<div id="flashEffect"></div>
+<div id="startScreen">
+<h1>MISTERI RUMAH TUA</h1>
+<p>Kamu terjebak di sebuah rumah tua. Cari kunci untuk membuka pintu keluar. Tetapi kamu tidak sendirian di sini...</p>
+<button class="mainButton" id="startBtn">MULAI BERMAIN</button>
+<p>Gunakan tombol arah untuk berjalan. Gunakan tombol panah melengkung untuk melihat.</p>
+</div>
+<div id="endScreen" class="hidden">
+<h1>SELAMAT!</h1><p>Kamu berhasil keluar dari rumah tua.</p>
+<button class="mainButton" onclick="location.reload()">MAIN LAGI</button>
+</div>
+<div id="controls">
+<div class="pad"><button id="up">▲</button><button id="left">◀</button><button id="down">▼</button><button id="right">▶</button></div>
+<div id="actions"><button id="turnLeft">↶ LIHAT</button><button id="turnRight">LIHAT ↷</button><button id="flash">🔦 SENTER</button></div>
+</div>
+<div id="lookInfo">Geser layar untuk melihat sekitar</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+// Dunia 3D
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030303);
+scene.fog = new THREE.Fog(0x030303, 3, 23);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 8);
+camera.rotation.order = "YXZ";
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+renderer.domElement.id = "game";
+
+// Cahaya
+scene.add(new THREE.AmbientLight(0x252535, 0.7));
+const flashlight = new THREE.PointLight(0xffdfaa, 45, 14, 2);
+flashlight.position.set(0, 0, -0.2);
+camera.add(flashlight);
+scene.add(camera);
+
+// Material dan pembuat balok
+const floorMat = new THREE.MeshStandardMaterial({color:0x29221f, roughness:1});
+const wallMat = new THREE.MeshStandardMaterial({color:0x39302b, roughness:1});
+const darkMat = new THREE.MeshStandardMaterial({color:0x151212});
+
+function block(x,y,z,w,h,d,mat){
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+  mesh.position.set(x,y,z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return mesh;
+}
+
+// Lantai, atap, dan dinding
+block(0,-0.15,-4,6,0.3,30,floorMat);
+block(0,4,-4,6,0.3,30,darkMat);
+block(-3,2,-4,0.3,4,30,wallMat);
+block(3,2,-4,0.3,4,30,wallMat);
+block(0,2,-19,6,4,0.3,wallMat);
+
+for(let z=9; z>-17; z-=4){
+  block(-2.8,2,z,0.3,4,0.4,darkMat);
+  block(2.8,2,z,0.3,4,0.4,darkMat);
+}
+
+// Lampu lorong
+for(let z=7; z>-17; z-=7){
+  const lamp = new THREE.PointLight(0xff9845, 3, 5);
+  lamp.position.set(0,3.5,z);
+  scene.add(lamp);
+}
+
+// Pintu keluar
+const door = block(0,1.6,-17.8,2.2,3.2,0.25,
+  new THREE.MeshStandardMaterial({color:0x382017}));
+
+// Kunci
+const key = new THREE.Group();
+const gold = new THREE.MeshStandardMaterial({color:0xffcc00, metalness:0.7});
+const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.055,8,20),gold);
+key.add(ring);
+const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.09,0.55,0.09),gold);
+shaft.position.y = -0.35;
+key.add(shaft);
+const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.08,0.09),gold);
+tooth.position.set(0.08,-0.48,0);
+key.add(tooth);
+key.position.set(0,0.9,-2);
+scene.add(key);
+
+// Hantu 3D
+const ghost = new THREE.Group();
+const ghostMaterial = new THREE.MeshStandardMaterial({
+  color:0xdde8ed, transparent:true, opacity:0.65,
+  emissive:0x243344, emissiveIntensity:0.5
+});
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.35,16,16),ghostMaterial);
+head.position.y = 1.8;
+ghost.add(head);
+const ghostBody = new THREE.Mesh(new THREE.ConeGeometry(0.55,1.5,16),ghostMaterial);
+ghostBody.position.y = 0.9;
+ghostBody.rotation.x = Math.PI;
+ghost.add(ghostBody);
+
+const eyeMaterial = new THREE.MeshBasicMaterial({color:0x990000});
+for(const x of [-0.13,0.13]){
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8),eyeMaterial);
+  eye.position.set(x,1.85,0.29);
+  ghost.add(eye);
+}
+ghost.visible = false;
+scene.add(ghost);
+
+// Audio dibuat dengan Web Audio, tanpa file suara tambahan
+let audio = null, masterGain = null, soundEnabled = true;
+function initAudio(){
+  if(audio) return;
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audio.createGain();
+  masterGain.gain.value = soundEnabled ? 0.5 : 0;
+  masterGain.connect(audio.destination);
+
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = "sine";
+  osc.frequency.value = 48;
+  gain.gain.value = 0.035;
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+}
+
+function tone(freq,duration,type="sine",volume=0.15){
+  if(!audio || !soundEnabled) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume,audio.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+duration);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(audio.currentTime+duration);
+}
+function footstep(){ tone(75,0.12,"triangle",0.15); }
+function ghostSound(){
+  tone(180,1.2,"sawtooth",0.08);
+  setTimeout(()=>tone(115,1,"sine",0.1),250);
+}
+function doorSound(){
+  tone(90,0.7,"triangle",0.2);
+  setTimeout(()=>tone(55,0.8,"sawtooth",0.08),250);
+}
+
+document.getElementById("soundBtn").onclick = ()=>{
+  soundEnabled = !soundEnabled;
+  document.getElementById("soundBtn").textContent =
+    soundEnabled ? "🔊 SUARA ON" : "🔇 SUARA OFF";
+  if(masterGain && audio){
+    masterGain.gain.setTargetAtTime(soundEnabled?0.5:0,audio.currentTime,0.05);
+  }
+};
+
+// Kontrol pemain
+let playing = false, hasKey = false, yaw = 0;
+let flashlightOn = true, stepTimer = 0;
+const keys = {up:false,down:false,left:false,right:false,turnLeft:false,turnRight:false};
+
+window.addEventListener("keydown",e=>{
+  if(e.key==="w"||e.key==="ArrowUp") keys.up=true;
+  if(e.key==="s"||e.key==="ArrowDown") keys.down=true;
+  if(e.key==="a") keys.left=true;
+  if(e.key==="d") keys.right=true;
+  if(e.key==="ArrowLeft") keys.turnLeft=true;
+  if(e.key==="ArrowRight") keys.turnRight=true;
+});
+window.addEventListener("keyup",e=>{
+  if(e.key==="w"||e.key==="ArrowUp") keys.up=false;
+  if(e.key==="s"||e.key==="ArrowDown") keys.down=false;
+  if(e.key==="a") keys.left=false;
+  if(e.key==="d") keys.right=false;
+  if(e.key==="ArrowLeft") keys.turnLeft=false;
+  if(e.key==="ArrowRight") keys.turnRight=false;
+});
+
+function hold(id,name){
+  const btn = document.getElementById(id);
+  btn.addEventListener("pointerdown",e=>{
+    e.preventDefault();
+    keys[name]=true;
+    btn.setPointerCapture(e.pointerId);
+  });
+  const release=()=>keys[name]=false;
+  btn.addEventListener("pointerup",release);
+  btn.addEventListener("pointercancel",release);
+  btn.addEventListener("lostpointercapture",release);
+}
+hold("up","up"); hold("down","down"); hold("left","left");
+hold("right","right"); hold("turnLeft","turnLeft"); hold("turnRight","turnRight");
+
+// Geser area pandangan untuk melihat sekeliling
+let lookPointer=null, lastLookX=0;
+renderer.domElement.addEventListener("pointerdown",e=>{
+  if(e.pointerType==="touch"||e.pointerType==="mouse"){
+    lookPointer=e.pointerId;
+    lastLookX=e.clientX;
+  }
+});
+renderer.domElement.addEventListener("pointermove",e=>{
+  if(lookPointer===e.pointerId && playing){
+    yaw-=(e.clientX-lastLookX)*0.004;
+    camera.rotation.y=yaw;
+    lastLookX=e.clientX;
+  }
+});
+function releaseLook(e){if(lookPointer===e.pointerId) lookPointer=null;}
+renderer.domElement.addEventListener("pointerup",releaseLook);
+renderer.domElement.addEventListener("pointercancel",releaseLook);
+
+// Senter
+document.getElementById("flash").onclick=()=>{
+  flashlightOn=!flashlightOn;
+  flashlight.visible=flashlightOn;
+};
+
+// Kemunculan hantu
+let nextGhostTime=5, ghostTimer=0, ghostVisibleTime=0;
+const ghostStatus=document.getElementById("ghostStatus");
+const message=document.getElementById("message");
+
+function spawnGhost(){
+  if(!playing) return;
+  const positions=[-14,-11,-8,-5,-1,3,6];
+  const z=positions[Math.floor(Math.random()*positions.length)];
+  const x=Math.random()>0.5?1.3:-1.3;
+  ghost.position.set(x,0,z);
+  ghost.visible=true;
+  ghostVisibleTime=3.5;
+  ghostStatus.textContent="ADA SESUATU DI SINI...";
+  ghostSound();
+  message.textContent="APA ITU?!";
+  const effect=document.getElementById("flashEffect");
+  effect.style.transition="opacity 0.15s";
+  effect.style.opacity="0.18";
+  setTimeout(()=>effect.style.opacity="0",150);
+}
+
+// Mulai permainan
+document.getElementById("startBtn").onclick=async()=>{
+  initAudio();
+  if(audio.state==="suspended") await audio.resume();
+  playing=true;
+  document.getElementById("startScreen").classList.add("hidden");
+  message.textContent="Temukan kunci!";
+};
+
+// Menang
+function winGame(){
+  playing=false;
+  doorSound();
+  document.getElementById("endScreen").classList.remove("hidden");
+}
+
+// Loop permainan
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const delta=Math.min(clock.getDelta(),0.05);
+
+  if(playing){
+    const speed=3*delta;
+    const rotationSpeed=2*delta;
+
+    if(keys.turnLeft) yaw+=rotationSpeed;
+    if(keys.turnRight) yaw-=rotationSpeed;
+    camera.rotation.y=yaw;
+
+    let dx=0,dz=0;
+    if(keys.up) dz-=speed;
+    if(keys.down) dz+=speed;
+    if(keys.left) dx-=speed;
+    if(keys.right) dx+=speed;
+
+    const sin=Math.sin(yaw), cos=Math.cos(yaw);
+    const moveX=dx*cos+dz*sin;
+    const moveZ=-dx*sin+dz*cos;
+    const nextX=camera.position.x+moveX;
+    const nextZ=camera.position.z+moveZ;
+
+    if(nextX>-2.55&&nextX<2.55) camera.position.x=nextX;
+    if(nextZ>-17.1&&nextZ<9.3) camera.position.z=nextZ;
+
+    if(dx!==0||dz!==0){
+      stepTimer+=delta;
+      if(stepTimer>0.42){footstep();stepTimer=0;}
+    }
+
+    // Mengambil kunci
+    const distance=camera.position.distanceTo(new THREE.Vector3(0,0.9,-2));
+    if(!hasKey&&distance<1.5){
+      hasKey=true;
+      scene.remove(key);
+      document.getElementById("keyStatus").textContent="Kunci: Ditemukan!";
+      message.textContent="KUNCI DITEMUKAN!";
+      tone(700,0.3,"sine",0.15);
+    }
+
+    // Pintu keluar
+    if(camera.position.z<-16.5){
+      if(hasKey) winGame();
+      else{
+        camera.position.z=-16.5;
+        message.textContent="PINTU TERKUNCI! CARI KUNCI!";
+      }
+    }
+
+    // Hantu muncul dan menghilang
+    ghostTimer+=delta;
+    if(ghostVisibleTime>0){
+      ghostVisibleTime-=delta;
+      ghost.position.y=Math.sin(performance.now()*0.002)*0.12;
+      ghost.lookAt(camera.position);
+      if(ghostVisibleTime<=0){
+        ghost.visible=false;
+        ghostStatus.textContent="Jangan lengah...";
+        message.textContent="Cari jalan keluar...";
+        nextGhostTime=6+Math.random()*6;
+        ghostTimer=0;
+      }
+    }else if(ghostTimer>nextGhostTime){
+      spawnGhost();
+    }
+  }
+
+  key.rotation.y+=1.2*delta;
+  renderer.render(scene,camera);
+}
+animate();
+
+// Menyesuaikan ukuran layar
+window.addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
